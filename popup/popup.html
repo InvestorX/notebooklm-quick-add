@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NotebookLM Quick Add</title>
   <style>
-    /* Inline styles to ensure they load */
     :root {
       --primary-color: #1a73e8;
       --primary-hover: #1557b0;
@@ -32,19 +31,19 @@
       color: var(--text-primary);
       background: var(--background);
       width: 360px;
-      min-height: 200px;
     }
 
     .container {
       padding: 16px;
     }
 
-    . hidden {
-      display: none ! important;
+    /* IMPORTANT: Hidden class */
+    .hidden {
+      display: none;
     }
 
     /* Header */
-    .header {
+    . header {
       display: flex;
       align-items: center;
       gap: 10px;
@@ -62,7 +61,7 @@
       align-items: center;
       justify-content: center;
       color: white;
-      font-size: 16px;
+      font-size: 14px;
     }
 
     .header h1 {
@@ -72,9 +71,7 @@
 
     /* Loading */
     .loading {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
+      text-align: center;
       padding: 40px 20px;
     }
 
@@ -85,6 +82,19 @@
       border-top-color: var(--primary-color);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
+      margin: 0 auto 12px;
+    }
+
+    . spinner-small {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
     }
 
     @keyframes spin {
@@ -92,7 +102,6 @@
     }
 
     . loading p {
-      margin-top: 12px;
       color: var(--text-secondary);
     }
 
@@ -110,7 +119,7 @@
       margin-bottom: 8px;
     }
 
-    /* Page Type Badge */
+    /* Badge */
     .page-type-badge {
       display: inline-flex;
       align-items: center;
@@ -123,7 +132,7 @@
       margin-bottom: 8px;
     }
 
-    . page-type-badge.youtube {
+    .page-type-badge.youtube {
       background: #fee2e2;
       color: #dc2626;
     }
@@ -143,23 +152,23 @@
       font-size: 15px;
       font-weight: 500;
       margin-bottom: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
-      overflow: hidden;
     }
 
     .page-url {
       font-size: 12px;
       color: var(--text-secondary);
       word-break: break-all;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
       overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
-    /* Playlist Info */
+    /* Playlist */
     .playlist-info {
       display: flex;
       align-items: center;
@@ -178,10 +187,9 @@
     .playlist-note {
       font-size: 12px;
       color: var(--text-secondary);
-      margin-top: 4px;
     }
 
-    /* Notebook Select */
+    /* Select */
     .notebook-select-wrapper {
       display: flex;
       gap: 8px;
@@ -194,12 +202,6 @@
       border-radius: var(--radius);
       font-size: 14px;
       background: var(--background);
-      cursor: pointer;
-    }
-
-    .notebook-select:focus {
-      outline: none;
-      border-color: var(--primary-color);
     }
 
     .hint {
@@ -213,7 +215,7 @@
 
     /* Buttons */
     .btn {
-      display: inline-flex;
+      display: flex;
       align-items: center;
       justify-content: center;
       gap: 8px;
@@ -223,16 +225,15 @@
       font-size: 14px;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    . btn-primary {
-      background: var(--primary-color);
-      color: white;
       width: 100%;
     }
 
-    .btn-primary:hover:not(:disabled) {
+    .btn-primary {
+      background: var(--primary-color);
+      color: white;
+    }
+
+    .btn-primary:hover {
       background: var(--primary-hover);
     }
 
@@ -245,11 +246,6 @@
       background: var(--surface);
       color: var(--text-primary);
       border: 1px solid var(--border);
-      width: 100%;
-    }
-
-    .btn-secondary:hover {
-      background: #e5e7eb;
     }
 
     .btn-icon {
@@ -264,13 +260,8 @@
       flex-shrink: 0;
     }
 
-    .btn-icon:hover {
-      background: var(--surface);
-    }
-
     /* States */
-    .error-state,
-    .success-state {
+    .state-container {
       text-align: center;
       padding: 30px 20px;
     }
@@ -288,12 +279,10 @@
 
     .error-state . state-icon {
       background: #fee2e2;
-      color: var(--error-color);
     }
 
     .success-state . state-icon {
       background: #d1fae5;
-      color: var(--success-color);
     }
 
     .error-state p {
@@ -313,26 +302,12 @@
       padding-top: 12px;
       border-top: 1px solid var(--border);
       text-align: center;
-    }
-
-    .footer-tip {
       font-size: 11px;
       color: var(--text-secondary);
     }
 
-    /* Actions */
-    .actions {
+    . actions {
       margin-top: 16px;
-    }
-
-    /* Spinner in button */
-    .btn . spinner-small {
-      width: 16px;
-      height: 16px;
-      border: 2px solid rgba(255,255,255,0.3);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
     }
   </style>
 </head>
@@ -344,72 +319,67 @@
       <h1>NotebookLM Quick Add</h1>
     </header>
 
-    <!-- Loading State -->
-    <div id="loading" class="loading">
-      <div class="spinner"></div>
-      <p>ページを検出中...</p>
-    </div>
+    <!-- Content Area - Only one should be visible -->
+    <div id="content-area">
+      <!-- Loading State -->
+      <div id="state-loading" class="loading">
+        <div class="spinner"></div>
+        <p>ページを検出中...</p>
+      </div>
 
-    <!-- Main Content -->
-    <main id="main-content" class="main-content hidden">
-      <!-- Page Info -->
-      <section id="page-info" class="section">
-        <div id="page-type-badge" class="page-type-badge">
-          <span id="badge-icon">🌐</span>
-          <span id="badge-text">ウェブページ</span>
-        </div>
-        <h2 id="page-title" class="page-title">ページタイトル</h2>
-        <p id="page-url" class="page-url">https://example.com</p>
-      </section>
+      <!-- Main Content -->
+      <div id="state-main" class="hidden">
+        <section class="section">
+          <div id="page-type-badge" class="page-type-badge webpage">
+            <span id="badge-icon">🌐</span>
+            <span id="badge-text">ウェブページ</span>
+          </div>
+          <h2 id="page-title" class="page-title">ページタイトル</h2>
+          <p id="page-url" class="page-url">https://example.com</p>
+        </section>
 
-      <!-- Playlist Info (hidden by default) -->
-      <section id="playlist-section" class="section hidden">
-        <div class="playlist-info">
-          <span>📋</span>
-          <span id="playlist-count" class="playlist-count">0本の動画</span>
-        </div>
-        <p class="playlist-note">※ プレイリスト内の全動画が追加されます</p>
-      </section>
+        <section id="playlist-section" class="section hidden">
+          <div class="playlist-info">
+            <span>📋</span>
+            <span id="playlist-count" class="playlist-count">0本の動画</span>
+          </div>
+          <p class="playlist-note">※ プレイリスト内の全動画が追加されます</p>
+        </section>
 
-      <!-- Notebook Selection -->
-      <section class="section">
-        <h3>追加先ノートブック</h3>
-        <div class="notebook-select-wrapper">
-          <select id="notebook-select" class="notebook-select">
-            <option value="">新しいノートブックを作成</option>
-          </select>
-          <button id="refresh-notebooks" class="btn-icon" title="更新">↻</button>
-        </div>
-        <p id="notebook-hint" class="hint hidden">
-          💡 NotebookLMを開いてノートブック一覧を取得してください
-        </p>
-      </section>
+        <section class="section">
+          <h3>追加先ノートブック</h3>
+          <div class="notebook-select-wrapper">
+            <select id="notebook-select" class="notebook-select">
+              <option value="">新しいノートブックを作成</option>
+            </select>
+            <button id="refresh-notebooks" class="btn-icon" title="更新">↻</button>
+          </div>
+          <p id="notebook-hint" class="hint hidden">💡 NotebookLMを開いてノートブック一覧を取得してください</p>
+        </section>
 
-      <!-- Add Button -->
-      <section class="actions">
-        <button id="add-btn" class="btn btn-primary">
-          + NotebookLMに追加
-        </button>
-      </section>
-    </main>
+        <section class="actions">
+          <button id="add-btn" class="btn btn-primary">+ NotebookLMに追加</button>
+        </section>
+      </div>
 
-    <!-- Error State -->
-    <div id="error-state" class="error-state hidden">
-      <div class="state-icon">⚠️</div>
-      <p id="error-message">エラーが発生しました</p>
-      <button id="retry-btn" class="btn btn-secondary">再試行</button>
-    </div>
+      <!-- Error State -->
+      <div id="state-error" class="state-container error-state hidden">
+        <div class="state-icon">⚠️</div>
+        <p id="error-message">エラーが発生しました</p>
+        <button id="retry-btn" class="btn btn-secondary">再試行</button>
+      </div>
 
-    <!-- Success State -->
-    <div id="success-state" class="success-state hidden">
-      <div class="state-icon">✓</div>
-      <p id="success-message">NotebookLMに追加しました！</p>
-      <button id="open-notebook-btn" class="btn btn-primary">NotebookLMを開く</button>
+      <!-- Success State -->
+      <div id="state-success" class="state-container success-state hidden">
+        <div class="state-icon">✓</div>
+        <p id="success-message">NotebookLMに追加しました！</p>
+        <button id="open-notebook-btn" class="btn btn-primary">NotebookLMを開く</button>
+      </div>
     </div>
 
     <!-- Footer -->
     <footer class="footer">
-      <span class="footer-tip">💡 右クリックメニューからも追加できます</span>
+      💡 右クリックメニューからも追加できます
     </footer>
   </div>
 
