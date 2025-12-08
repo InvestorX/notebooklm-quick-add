@@ -1,450 +1,460 @@
 /**
  * NotebookLM Bridge Content Script
- * Handles communication with NotebookLM page for source addition
  */
 
 (function() {
   'use strict';
-  
-  // Prevent multiple injections
+
   if (window.__notebookLMBridge) return;
   window.__notebookLMBridge = true;
-  
-  // Processing state
+
   let isProcessing = false;
-  
+
   /**
-   * Wait for an element to appear in the DOM
-   * @param {string} selector - CSS selector
-   * @param {number} timeout - Timeout in milliseconds
-   * @returns {Promise<Element|null>} - Resolved element or null
+   * Wait for element
    */
-  function waitForElement(selector, timeout = 10000) {
-    return new Promise((resolve) => {
-      // Validate selector first
+  function waitForElement(selector, timeout) {
+    timeout = timeout || 10000;
+    return new Promise(function(resolve) {
       try {
         document.querySelector(selector);
       } catch (e) {
-        console.warn(`Invalid selector: ${selector}`);
         resolve(null);
         return;
       }
-      
-      const element = document.querySelector(selector);
+
+      var element = document.querySelector(selector);
       if (element) {
         resolve(element);
         return;
       }
-      
-      const observer = new MutationObserver((mutations, obs) => {
-        const el = document.querySelector(selector);
+
+      var observer = new MutationObserver(function(mutations, obs) {
+        var el = document.querySelector(selector);
         if (el) {
           obs.disconnect();
           resolve(el);
         }
       });
-      
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-      
-      setTimeout(() => {
+
+      observer. observe(document.body, { childList: true, subtree: true });
+
+      setTimeout(function() {
         observer.disconnect();
-        resolve(null); // Return null instead of throwing
+        resolve(null);
       }, timeout);
     });
   }
-  
+
   /**
-   * Try multiple selectors and return the first match
-   * @param {Array<string>} selectors - Array of CSS selectors
-   * @param {number} timeout - Timeout per selector
-   * @returns {Promise<Element|null>} - First matching element or null
+   * Find element by multiple selectors
    */
-  async function findElementBySelectors(selectors, timeout = 2000) {
-    for (const selector of selectors) {
+  async function findElementBySelectors(selectors, timeout) {
+    timeout = timeout || 2000;
+    for (var i = 0; i < selectors. length; i++) {
       try {
-        // Validate selector
-        document.querySelector(selector);
-        
-        const element = await waitForElement(selector, timeout);
-        if (element) {
-          console.log(`Found element with selector: ${selector}`);
-          return element;
-        }
+        var el = await waitForElement(selectors[i], timeout);
+        if (el) return el;
       } catch (e) {
-        // Invalid selector, skip
         continue;
       }
     }
     return null;
   }
-  
+
   /**
-   * Find element by text content
-   * @param {string} tagName - Tag to search
-   * @param {Array<string>} textPatterns - Text patterns to match
-   * @returns {Element|null} - Matching element or null
-   */
-  function findElementByText(tagName, textPatterns) {
-    const elements = document.querySelectorAll(tagName);
-    for (const el of elements) {
-      const text = el.textContent?.toLowerCase() || '';
-      for (const pattern of textPatterns) {
-        if (text.includes(pattern.toLowerCase())) {
-          return el;
-        }
-      }
-    }
-    return null;
-  }
-  
-  /**
-   * Wait for page to be ready
-   * @returns {Promise<boolean>} - True if ready, false if timeout
-   */
-  async function waitForPageReady() {
-    // Wait for any content to appear
-    const selectors = [
-      '[role="main"]',
-      'main',
-      '#app',
-      '[data-testid]',
-      'body > div'
-    ];
-    
-    for (const selector of selectors) {
-      try {
-        const el = await waitForElement(selector, 3000);
-        if (el) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-          return true;
-        }
-      } catch (e) {
-        continue;
-      }
-    }
-    
-    // Fallback: just wait
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    return true;
-  }
-  
-  /**
-   * Simulate user click on an element
-   * @param {Element} element - Element to click
+   * Simulate click
    */
   function simulateClick(element) {
     if (! element) return;
-    
     try {
-      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    } catch (e) {
-      // Ignore scroll errors
-    }
-    
-    const events = ['mousedown', 'mouseup', 'click'];
-    events.forEach(eventType => {
-      const event = new MouseEvent(eventType, {
+      element. scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e) {}
+
+    ['mousedown', 'mouseup', 'click'].forEach(function(type) {
+      element. dispatchEvent(new MouseEvent(type, {
         bubbles: true,
         cancelable: true,
         view: window
-      });
-      element.dispatchEvent(event);
+      }));
     });
   }
-  
+
   /**
-   * Simulate typing in an input field
-   * @param {Element} input - Input element
-   * @param {string} text - Text to type
+   * Simulate typing
    */
   function simulateTyping(input, text) {
-    if (! input) return;
-    
+    if (!input) return;
     input.focus();
-    input.value = '';
-    
-    // Set value directly
-    input.value = text;
-    
-    // Dispatch events
+    input. value = text;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
-    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
   }
-  
+
   /**
-   * Get list of user's notebooks from the page
-   * @returns {Array} - Array of notebook objects
+   * Extract notebook title from card text
+   */
+  function extractNotebookTitle(cardText) {
+    if (!cardText) return null;
+    
+    var text = cardText.trim();
+    
+    // Remove leading Material icons (public, lock, etc.)
+    text = text.replace(/^(public|lock|group|share|visibility|people|person)\s*/i, ''). trim();
+    
+    // Pattern: "Title YYYY/MM/DD·N 個のソース"
+    var datePattern = /^(. +?)\s*\d{4}\/\d{2}\/\d{2}/;
+    var dateMatch = text.match(datePattern);
+    if (dateMatch && dateMatch[1]) {
+      return dateMatch[1]. trim();
+    }
+    
+    // Pattern with dot separator
+    var dotParts = text.split('·');
+    if (dotParts.length > 0) {
+      var firstPart = dotParts[0].trim();
+      firstPart = firstPart.replace(/\s*\d{4}\/\d{2}\/\d{2}\s*$/, ''). trim();
+      if (firstPart && firstPart.length > 1) {
+        return firstPart;
+      }
+    }
+    
+    // Fallback
+    var lines = text.split('\n');
+    if (lines[0]) {
+      return lines[0].trim(). substring(0, 80);
+    }
+    
+    return text. substring(0, 80);
+  }
+
+  /**
+   * Get notebooks from NotebookLM page
    */
   function getNotebooks() {
-    const notebooks = [];
-    const seenIds = new Set();
-    
-    // Method 1: Find by href containing /notebook/
-    const links = document.querySelectorAll('a[href*="/notebook/"]');
-    links.forEach(el => {
-      const href = el.getAttribute('href') || '';
-      const match = href.match(/\/notebook\/([^\/\?]+)/);
-      if (match && match[1]) {
-        const id = match[1];
-        if (!seenIds.has(id)) {
-          seenIds. add(id);
-          const name = el.textContent?.trim() || 'Untitled';
-          notebooks.push({ id, name });
+    var notebooks = [];
+    var seenNames = {};
+
+    console.log('Searching for notebooks.. .');
+
+    // FIXED: No space after dot in class selector
+    var cards = document.querySelectorAll('.project-button-card');
+    console.log('Found', cards.length, 'project-button-cards');
+
+    if (cards.length === 0) {
+      cards = document.querySelectorAll('mat-card');
+      console.log('Fallback: Found', cards.length, 'mat-cards');
+    }
+
+    cards.forEach(function(card, index) {
+      var cardText = card.textContent || '';
+      
+      // Skip create-new cards
+      if (cardText.indexOf('新規作成') !== -1 || 
+          cardText. indexOf('ノートブックを新規作成') !== -1 ||
+          card.classList.contains('create-new-action-button')) {
+        console.log('Skipping create-new card');
+        return;
+      }
+
+      // Extract title
+      var title = extractNotebookTitle(cardText);
+      
+      if (!title || title. length < 2) {
+        console.log('Skipping card with no title');
+        return;
+      }
+
+      // Skip duplicates
+      if (seenNames[title]) {
+        return;
+      }
+      seenNames[title] = true;
+
+      // Generate ID (index-based since NotebookLM doesn't expose real IDs easily)
+      var id = 'notebook-' + index;
+
+      // Try to find actual ID
+      var link = card.querySelector('a[href*="notebook"]');
+      if (link) {
+        var href = link.getAttribute('href') || '';
+        var match = href.match(/notebook\/([a-zA-Z0-9_-]+)/);
+        if (match && match[1]) {
+          id = match[1];
         }
       }
-    });
-    
-    // Method 2: Find by data attributes
-    const dataElements = document.querySelectorAll('[data-notebook-id], [data-id]');
-    dataElements.forEach(el => {
-      const id = el.dataset.notebookId || el. dataset.id;
-      if (id && !seenIds.has(id)) {
-        seenIds.add(id);
-        const nameEl = el.querySelector('h2, h3, h4, span, div');
-        const name = nameEl?.textContent?.trim() || el.textContent?.trim() || 'Untitled';
-        notebooks.push({ id, name: name. substring(0, 50) });
+
+      // Check data attributes
+      var dataId = card.getAttribute('data-notebook-id') || 
+                   card.getAttribute('data-id') ||
+                   card.getAttribute('data-project-id');
+      if (dataId) {
+        id = dataId;
       }
+
+      notebooks.push({ id: id, name: title });
+      console.log('Notebook', notebooks.length, ':', title. substring(0, 40));
     });
-    
-    console.log(`Found ${notebooks.length} notebooks`);
+
+    console.log('Total notebooks found:', notebooks. length);
     return notebooks;
   }
-  
+
   /**
-   * Add a single URL source to NotebookLM
-   * @param {string} url - URL to add
-   * @param {string} title - Title of the source
-   * @returns {Promise<boolean>} - Success status
+   * Add URL source to NotebookLM
    */
   async function addUrlSource(url, title) {
     try {
-      console.log(`Adding source: ${title} (${url})`);
+      console.log('Adding source:', title, url);
+
+      // Find "Add source" button
+      var addBtn = null;
+      var btns = document.querySelectorAll('button');
       
-      // Step 1: Find "Add source" button
-      const addSourceBtn = await findElementBySelectors([
-        'button[aria-label*="Add source"]',
-        'button[aria-label*="Add"]',
-        'button[aria-label*="ソース"]',
-        'button[aria-label*="追加"]',
-        '[data-action="add-source"]',
-        'button[data-testid*="add"]',
-        'button[data-testid*="source"]'
-      ], 3000);
-      
-      // Fallback: find by text
-      const addBtn = addSourceBtn || findElementByText('button', [
-        'add source', 'ソースを追加', '追加', 'add', 'new source'
-      ]);
-      
-      if (! addBtn) {
-        console. error('Add source button not found');
+      for (var i = 0; i < btns.length; i++) {
+        var btnText = btns[i].textContent || '';
+        var ariaLabel = btns[i].getAttribute('aria-label') || '';
+        
+        if (btnText.indexOf('ソースを追加') !== -1 ||
+            btnText.indexOf('ソースの追加') !== -1 ||
+            btnText.indexOf('Add source') !== -1 ||
+            ariaLabel.indexOf('ソースを追加') !== -1 ||
+            ariaLabel.indexOf('Add source') !== -1) {
+          addBtn = btns[i];
+          break;
+        }
+      }
+
+      if (!addBtn) {
+        console.error('Add source button not found');
         return false;
       }
-      
+
+      console.log('Clicking add source button');
       simulateClick(addBtn);
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(function(r) { setTimeout(r, 1200); });
+
+      // Find URL/Website option
+      var menuItems = document.querySelectorAll('button, [role="menuitem"], mat-menu-item');
+      var urlOption = null;
       
-      // Step 2: Find "Website/URL/Link" option
-      const urlOption = await findElementBySelectors([
-        'button[aria-label*="Website"]',
-        'button[aria-label*="URL"]',
-        'button[aria-label*="Link"]',
-        'button[aria-label*="ウェブ"]',
-        'button[aria-label*="リンク"]',
-        '[data-source-type="url"]',
-        '[data-source-type="website"]',
-        '[data-source-type="link"]',
-        '[role="menuitem"]'
-      ], 3000);
-      
-      // Fallback: find by text
-      const urlBtn = urlOption || findElementByText('button, [role="menuitem"], div[role="button"]', [
-        'website', 'web', 'url', 'link', 'ウェブ', 'リンク', 'サイト'
-      ]);
-      
-      if (urlBtn) {
-        simulateClick(urlBtn);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      for (var j = 0; j < menuItems.length; j++) {
+        var itemText = (menuItems[j]. textContent || ''). toLowerCase();
+        if (itemText.indexOf('ウェブサイト') !== -1 || 
+            itemText.indexOf('website') !== -1 ||
+            itemText.indexOf('url') !== -1 ||
+            itemText.indexOf('リンク') !== -1) {
+          urlOption = menuItems[j];
+          break;
+        }
       }
+
+      if (urlOption) {
+        console.log('Clicking URL option');
+        simulateClick(urlOption);
+        await new Promise(function(r) { setTimeout(r, 1000); });
+      }
+
+      // Find URL input
+      var urlInput = null;
+      var inputs = document.querySelectorAll('input, textarea');
       
-      // Step 3: Find URL input field
-      const urlInput = await findElementBySelectors([
-        'input[type="url"]',
-        'input[type="text"]',
-        'input[placeholder*="URL"]',
-        'input[placeholder*="http"]',
-        'input[placeholder*="url"]',
-        'input[aria-label*="URL"]',
-        'textarea'
-      ], 3000);
-      
+      for (var k = 0; k < inputs.length; k++) {
+        var inp = inputs[k];
+        if (inp.offsetParent === null) continue;
+        
+        var placeholder = (inp.placeholder || '').toLowerCase();
+        var ariaLbl = (inp.getAttribute('aria-label') || '').toLowerCase();
+        var type = inp.type || '';
+        
+        if (type === 'url' ||
+            placeholder.indexOf('url') !== -1 || 
+            placeholder. indexOf('http') !== -1 ||
+            ariaLbl.indexOf('url') !== -1) {
+          urlInput = inp;
+          break;
+        }
+      }
+
+      if (! urlInput) {
+        for (var m = 0; m < inputs.length; m++) {
+          if (inputs[m]. offsetParent !== null && 
+              (inputs[m].type === 'text' || inputs[m].type === 'url' || inputs[m].tagName === 'TEXTAREA')) {
+            urlInput = inputs[m];
+            break;
+          }
+        }
+      }
+
       if (!urlInput) {
         console.error('URL input not found');
         return false;
       }
-      
+
+      console.log('Typing URL');
       simulateTyping(urlInput, url);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(function(r) { setTimeout(r, 600); });
+
+      // Find submit button
+      var submitBtn = null;
+      var allBtns = document. querySelectorAll('button');
       
-      // Step 4: Find submit button
-      const submitBtn = await findElementBySelectors([
-        'button[type="submit"]',
-        'button[aria-label*="Add"]',
-        'button[aria-label*="Insert"]',
-        'button[aria-label*="追加"]',
-        'button[aria-label*="挿入"]',
-        'button[data-testid*="submit"]',
-        'button[data-testid*="confirm"]'
-      ], 2000);
-      
-      // Fallback: find by text
-      const submitButton = submitBtn || findElementByText('button', [
-        'add', 'insert', 'submit', 'ok', '追加', '挿入', '確定'
-      ]);
-      
-      if (submitButton) {
-        simulateClick(submitButton);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+      for (var n = 0; n < allBtns.length; n++) {
+        var bt = allBtns[n];
+        if (bt.offsetParent === null) continue;
+        
+        var btText = (bt.textContent || '').toLowerCase();
+        var btType = bt.getAttribute('type');
+        
+        if (btType === 'submit' ||
+            (btText.indexOf('追加') !== -1 && btText. indexOf('ソース') === -1) ||
+            btText.indexOf('挿入') !== -1 ||
+            (btText.indexOf('add') !== -1 && btText.indexOf('source') === -1) ||
+            btText.indexOf('insert') !== -1) {
+          submitBtn = bt;
+          break;
+        }
       }
-      
-      console.log(`Successfully initiated add for: ${title}`);
+
+      if (submitBtn) {
+        console.log('Clicking submit button');
+        simulateClick(submitBtn);
+        await new Promise(function(r) { setTimeout(r, 1500); });
+      }
+
+      console.log('Source add completed for:', title);
       return true;
-      
+
     } catch (error) {
-      console.error('Failed to add URL source:', error);
+      console.error('Failed to add source:', error);
       return false;
     }
   }
-  
+
   /**
-   * Process all pending sources from extension storage
+   * Process pending sources
    */
   async function processPendingSources() {
-    if (isProcessing) {
-      console.log('Already processing, skipping.. .');
-      return;
-    }
-    
+    if (isProcessing) return;
+
     try {
       isProcessing = true;
-      
-      const result = await chrome.storage.local.get('pending_sources');
-      const pendingSources = result.pending_sources;
-      
-      if (! pendingSources) {
+
+      var result = await chrome.storage.local.get('pending_sources');
+      var pending = result.pending_sources;
+
+      if (! pending) {
         console.log('No pending sources');
         return;
       }
-      
-      // Check if recent (within 60 seconds)
-      if (Date.now() - pendingSources.timestamp > 60000) {
+
+      if (Date.now() - pending.timestamp > 60000) {
         console.log('Pending sources expired');
         await chrome.storage.local.remove('pending_sources');
         return;
       }
-      
-      // Wait for page
-      await waitForPageReady();
-      
-      const sources = pendingSources.sources || [];
-      console.log(`Processing ${sources.length} sources... `);
-      
-      let successCount = 0;
-      
-      for (let i = 0; i < sources.length; i++) {
-        const source = sources[i];
-        console.log(`[${i + 1}/${sources.length}] ${source.title}`);
-        
-        const success = await addUrlSource(source.url, source.title);
+
+      await new Promise(function(r) { setTimeout(r, 2000); });
+
+      var sources = pending.sources || [];
+      console.log('Processing', sources.length, 'sources');
+
+      var successCount = 0;
+      for (var i = 0; i < sources.length; i++) {
+        console.log('[' + (i + 1) + '/' + sources.length + ']', sources[i]. title);
+        var success = await addUrlSource(sources[i]. url, sources[i].title);
         if (success) successCount++;
-        
-        // Wait between additions
         if (i < sources.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 2500));
+          await new Promise(function(r) { setTimeout(r, 2500); });
         }
       }
-      
-      // Clear pending
-      await chrome.storage. local.remove('pending_sources');
-      
-      // Notify
+
+      await chrome.storage.local. remove('pending_sources');
+
       chrome.runtime.sendMessage({
         action: 'SOURCES_ADDED',
-        data: { successCount, total: sources.length }
-      }). catch(() => {});
-      
-      console.log(`Done: ${successCount}/${sources.length} succeeded`);
-      
+        data: { successCount: successCount, total: sources.length }
+      }). catch(function() {});
+
+      console.log('Done:', successCount + '/' + sources.length);
+
     } catch (error) {
-      console. error('Error processing sources:', error);
+      console.error('Error processing sources:', error);
     } finally {
       isProcessing = false;
     }
   }
-  
+
   /**
    * Message listener
    */
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    const handleAsync = async () => {
+  chrome.runtime.onMessage.addListener(function(message, sender, sendResponse) {
+    var handleAsync = async function() {
       switch (message.action) {
         case 'ADD_PENDING_SOURCES':
           await processPendingSources();
           return { success: true };
-        
+
         case 'GET_NOTEBOOKS':
-          return { success: true, data: getNotebooks() };
-        
+          var notebooks = getNotebooks();
+          return { success: true, data: notebooks };
+
         case 'ADD_URL_SOURCE':
-          const success = await addUrlSource(message. data.url, message.data.title);
-          return { success };
-        
+          var success = await addUrlSource(message.data. url, message.data.title);
+          return { success: success };
+
         default:
           return { success: false, error: 'Unknown action' };
       }
     };
-    
+
     handleAsync()
       .then(sendResponse)
-      .catch(error => sendResponse({ success: false, error: error.message }));
-    
+      . catch(function(e) { sendResponse({ success: false, error: e.message }); });
+
     return true;
   });
-  
-  // Initialize
-  const initBridge = async () => {
+
+  /**
+   * Initialize
+   */
+  async function initBridge() {
     console.log('NotebookLM Quick Add: Bridge loaded');
-    
-    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    await new Promise(function(r) { setTimeout(r, 2500); });
     await processPendingSources();
-    
-    // Cache notebooks
-    const notebooks = getNotebooks();
+
+    var notebooks = getNotebooks();
     if (notebooks.length > 0) {
       chrome.runtime.sendMessage({
         action: 'SAVE_NOTEBOOKS',
         data: notebooks
-      }). catch(() => {});
+      }). catch(function() {});
     }
-  };
-  
+  }
+
   if (document.readyState === 'complete') {
     initBridge();
   } else {
     window.addEventListener('load', initBridge);
   }
-  
-  // SPA navigation handling
-  let lastUrl = location.href;
-  new MutationObserver(() => {
+
+  // SPA navigation
+  var lastUrl = location.href;
+  new MutationObserver(function() {
     if (location.href !== lastUrl) {
-      lastUrl = location. href;
-      setTimeout(processPendingSources, 2000);
+      lastUrl = location.href;
+      setTimeout(function() {
+        var notebooks = getNotebooks();
+        if (notebooks.length > 0) {
+          chrome.runtime.sendMessage({
+            action: 'SAVE_NOTEBOOKS',
+            data: notebooks
+          }).catch(function() {});
+        }
+        processPendingSources();
+      }, 2500);
     }
-  }). observe(document.body, { childList: true, subtree: true });
-  
+  }).observe(document.body, { childList: true, subtree: true });
+
 })();
