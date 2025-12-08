@@ -1,7 +1,6 @@
 /**
  * NotebookLM Bridge Content Script
  * Handles communication with NotebookLM page for source addition
- * Supports multiple sources (playlist videos)
  */
 
 (function() {
@@ -18,10 +17,19 @@
    * Wait for an element to appear in the DOM
    * @param {string} selector - CSS selector
    * @param {number} timeout - Timeout in milliseconds
-   * @returns {Promise<Element>} - Resolved element
+   * @returns {Promise<Element|null>} - Resolved element or null
    */
   function waitForElement(selector, timeout = 10000) {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
+      // Validate selector first
+      try {
+        document.querySelector(selector);
+      } catch (e) {
+        console.warn(`Invalid selector: ${selector}`);
+        resolve(null);
+        return;
+      }
+      
       const element = document.querySelector(selector);
       if (element) {
         resolve(element);
@@ -31,32 +39,96 @@
       const observer = new MutationObserver((mutations, obs) => {
         const el = document.querySelector(selector);
         if (el) {
-          obs. disconnect();
+          obs.disconnect();
           resolve(el);
         }
       });
       
-      observer.observe(document. body, {
+      observer.observe(document.body, {
         childList: true,
         subtree: true
       });
       
       setTimeout(() => {
         observer.disconnect();
-        reject(new Error(`Element ${selector} not found within ${timeout}ms`));
+        resolve(null); // Return null instead of throwing
       }, timeout);
     });
   }
   
   /**
-   * Wait for page to be ready (loaded and interactive)
-   * @returns {Promise<void>}
+   * Try multiple selectors and return the first match
+   * @param {Array<string>} selectors - Array of CSS selectors
+   * @param {number} timeout - Timeout per selector
+   * @returns {Promise<Element|null>} - First matching element or null
+   */
+  async function findElementBySelectors(selectors, timeout = 2000) {
+    for (const selector of selectors) {
+      try {
+        // Validate selector
+        document.querySelector(selector);
+        
+        const element = await waitForElement(selector, timeout);
+        if (element) {
+          console.log(`Found element with selector: ${selector}`);
+          return element;
+        }
+      } catch (e) {
+        // Invalid selector, skip
+        continue;
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Find element by text content
+   * @param {string} tagName - Tag to search
+   * @param {Array<string>} textPatterns - Text patterns to match
+   * @returns {Element|null} - Matching element or null
+   */
+  function findElementByText(tagName, textPatterns) {
+    const elements = document.querySelectorAll(tagName);
+    for (const el of elements) {
+      const text = el.textContent?.toLowerCase() || '';
+      for (const pattern of textPatterns) {
+        if (text.includes(pattern.toLowerCase())) {
+          return el;
+        }
+      }
+    }
+    return null;
+  }
+  
+  /**
+   * Wait for page to be ready
+   * @returns {Promise<boolean>} - True if ready, false if timeout
    */
   async function waitForPageReady() {
-    // Wait for main content area
-    await waitForElement('[role="main"], main, .notebook-content', 15000);
-    // Additional delay for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    // Wait for any content to appear
+    const selectors = [
+      '[role="main"]',
+      'main',
+      '#app',
+      '[data-testid]',
+      'body > div'
+    ];
+    
+    for (const selector of selectors) {
+      try {
+        const el = await waitForElement(selector, 3000);
+        if (el) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          return true;
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    // Fallback: just wait
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    return true;
   }
   
   /**
@@ -66,7 +138,11 @@
   function simulateClick(element) {
     if (! element) return;
     
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    try {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (e) {
+      // Ignore scroll errors
+    }
     
     const events = ['mousedown', 'mouseup', 'click'];
     events.forEach(eventType => {
@@ -85,18 +161,18 @@
    * @param {string} text - Text to type
    */
   function simulateTyping(input, text) {
-    if (!input) return;
+    if (! input) return;
     
     input.focus();
     input.value = '';
     
-    // Type character by character for better compatibility
-    for (const char of text) {
-      input.value += char;
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+    // Set value directly
+    input.value = text;
     
+    // Dispatch events
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
   }
   
   /**
@@ -105,37 +181,36 @@
    */
   function getNotebooks() {
     const notebooks = [];
+    const seenIds = new Set();
     
-    // Try multiple selectors for notebook list
-    const selectors = [
-      '[data-notebook-id]',
-      '. notebook-item',
-      '[role="listitem"][data-id]',
-      'a[href*="/notebook/"]',
-      '. notebook-card',
-      '[class*="notebook"]'
-    ];
-    
-    for (const selector of selectors) {
-      const elements = document.querySelectorAll(selector);
-      
-      elements.forEach(el => {
-        // Extract ID from various sources
-        let id = el.dataset.notebookId || 
-                 el.dataset.id || 
-                 el.getAttribute('href')?.match(/\/notebook\/([^\/\?]+)/)?.[1] ||
-                 '';
-        
-        // Extract name
-        const nameEl = el.querySelector('h2, h3, h4, [class*="title"], [class*="name"]') || el;
-        const name = nameEl?. textContent?.trim() || 'Untitled Notebook';
-        
-        if (id && ! notebooks.find(n => n.id === id)) {
-          notebooks. push({ id, name });
+    // Method 1: Find by href containing /notebook/
+    const links = document.querySelectorAll('a[href*="/notebook/"]');
+    links.forEach(el => {
+      const href = el.getAttribute('href') || '';
+      const match = href.match(/\/notebook\/([^\/\?]+)/);
+      if (match && match[1]) {
+        const id = match[1];
+        if (!seenIds.has(id)) {
+          seenIds. add(id);
+          const name = el.textContent?.trim() || 'Untitled';
+          notebooks.push({ id, name });
         }
-      });
-    }
+      }
+    });
     
+    // Method 2: Find by data attributes
+    const dataElements = document.querySelectorAll('[data-notebook-id], [data-id]');
+    dataElements.forEach(el => {
+      const id = el.dataset.notebookId || el. dataset.id;
+      if (id && !seenIds.has(id)) {
+        seenIds.add(id);
+        const nameEl = el.querySelector('h2, h3, h4, span, div');
+        const name = nameEl?.textContent?.trim() || el.textContent?.trim() || 'Untitled';
+        notebooks.push({ id, name: name. substring(0, 50) });
+      }
+    });
+    
+    console.log(`Found ${notebooks.length} notebooks`);
     return notebooks;
   }
   
@@ -149,170 +224,94 @@
     try {
       console.log(`Adding source: ${title} (${url})`);
       
-      // Find and click "Add source" button
-      const addSourceSelectors = [
+      // Step 1: Find "Add source" button
+      const addSourceBtn = await findElementBySelectors([
         'button[aria-label*="Add source"]',
-        'button[aria-label*="ソースを追加"]',
-        'button[aria-label*="添加来源"]',
+        'button[aria-label*="Add"]',
+        'button[aria-label*="ソース"]',
+        'button[aria-label*="追加"]',
         '[data-action="add-source"]',
-        'button:has([class*="add"])',
-        '[class*="add-source"]',
-        'button[class*="source"]'
-      ];
+        'button[data-testid*="add"]',
+        'button[data-testid*="source"]'
+      ], 3000);
       
-      let addSourceBtn = null;
-      for (const selector of addSourceSelectors) {
-        try {
-          addSourceBtn = await waitForElement(selector, 3000);
-          if (addSourceBtn) break;
-        } catch (e) {
-          continue;
-        }
+      // Fallback: find by text
+      const addBtn = addSourceBtn || findElementByText('button', [
+        'add source', 'ソースを追加', '追加', 'add', 'new source'
+      ]);
+      
+      if (! addBtn) {
+        console. error('Add source button not found');
+        return false;
       }
       
-      if (!addSourceBtn) {
-        // Try finding by text content
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          if (btn.textContent.includes('ソース') || 
-              btn.textContent.includes('Add') ||
-              btn.textContent. includes('追加')) {
-            addSourceBtn = btn;
-            break;
-          }
-        }
-      }
+      simulateClick(addBtn);
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      if (!addSourceBtn) {
-        throw new Error('Add source button not found');
-      }
-      
-      simulateClick(addSourceBtn);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      // Find and click "Website" or "URL" option
-      const urlOptionSelectors = [
+      // Step 2: Find "Website/URL/Link" option
+      const urlOption = await findElementBySelectors([
         'button[aria-label*="Website"]',
         'button[aria-label*="URL"]',
-        'button[aria-label*="ウェブサイト"]',
         'button[aria-label*="Link"]',
+        'button[aria-label*="ウェブ"]',
         'button[aria-label*="リンク"]',
         '[data-source-type="url"]',
         '[data-source-type="website"]',
-        '[data-source-type="link"]'
-      ];
+        '[data-source-type="link"]',
+        '[role="menuitem"]'
+      ], 3000);
       
-      let urlOption = null;
-      for (const selector of urlOptionSelectors) {
-        try {
-          urlOption = await waitForElement(selector, 3000);
-          if (urlOption) break;
-        } catch (e) {
-          continue;
-        }
+      // Fallback: find by text
+      const urlBtn = urlOption || findElementByText('button, [role="menuitem"], div[role="button"]', [
+        'website', 'web', 'url', 'link', 'ウェブ', 'リンク', 'サイト'
+      ]);
+      
+      if (urlBtn) {
+        simulateClick(urlBtn);
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
       
-      if (!urlOption) {
-        // Try finding by text/icon
-        const options = document.querySelectorAll('[role="menuitem"], [role="option"], button');
-        for (const opt of options) {
-          if (opt.textContent.includes('ウェブ') || 
-              opt.textContent.includes('Web') ||
-              opt.textContent.includes('URL') ||
-              opt.textContent. includes('リンク') ||
-              opt.textContent. includes('Link')) {
-            urlOption = opt;
-            break;
-          }
-        }
-      }
-      
-      if (urlOption) {
-        simulateClick(urlOption);
-        await new Promise(resolve => setTimeout(resolve, 800));
-      }
-      
-      // Find URL input field and enter URL
-      const urlInputSelectors = [
+      // Step 3: Find URL input field
+      const urlInput = await findElementBySelectors([
         'input[type="url"]',
+        'input[type="text"]',
         'input[placeholder*="URL"]',
         'input[placeholder*="http"]',
+        'input[placeholder*="url"]',
         'input[aria-label*="URL"]',
-        'input[name*="url"]',
-        'input[class*="url"]',
-        'textarea[placeholder*="URL"]'
-      ];
-      
-      let urlInput = null;
-      for (const selector of urlInputSelectors) {
-        try {
-          urlInput = await waitForElement(selector, 3000);
-          if (urlInput) break;
-        } catch (e) {
-          continue;
-        }
-      }
+        'textarea'
+      ], 3000);
       
       if (!urlInput) {
-        // Try any visible text input
-        const inputs = document.querySelectorAll('input[type="text"], input:not([type])');
-        for (const input of inputs) {
-          if (input.offsetParent !== null) { // Check if visible
-            urlInput = input;
-            break;
-          }
-        }
-      }
-      
-      if (! urlInput) {
-        throw new Error('URL input field not found');
+        console.error('URL input not found');
+        return false;
       }
       
       simulateTyping(urlInput, url);
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Find and click submit/add button
-      const submitSelectors = [
+      // Step 4: Find submit button
+      const submitBtn = await findElementBySelectors([
         'button[type="submit"]',
         'button[aria-label*="Add"]',
-        'button[aria-label*="追加"]',
         'button[aria-label*="Insert"]',
+        'button[aria-label*="追加"]',
         'button[aria-label*="挿入"]',
-        '. submit-button',
-        'button[class*="primary"]',
-        'button[class*="submit"]'
-      ];
+        'button[data-testid*="submit"]',
+        'button[data-testid*="confirm"]'
+      ], 2000);
       
-      let submitBtn = null;
-      for (const selector of submitSelectors) {
-        try {
-          submitBtn = await waitForElement(selector, 3000);
-          if (submitBtn) break;
-        } catch (e) {
-          continue;
-        }
+      // Fallback: find by text
+      const submitButton = submitBtn || findElementByText('button', [
+        'add', 'insert', 'submit', 'ok', '追加', '挿入', '確定'
+      ]);
+      
+      if (submitButton) {
+        simulateClick(submitButton);
+        await new Promise(resolve => setTimeout(resolve, 1500));
       }
       
-      if (!submitBtn) {
-        // Try finding by text
-        const buttons = document.querySelectorAll('button');
-        for (const btn of buttons) {
-          const text = btn.textContent.toLowerCase();
-          if (text.includes('追加') || text.includes('add') || 
-              text.includes('insert') || text.includes('挿入') ||
-              text.includes('submit') || text.includes('ok')) {
-            submitBtn = btn;
-            break;
-          }
-        }
-      }
-      
-      if (submitBtn) {
-        simulateClick(submitBtn);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      
-      console.log(`Successfully added source: ${title}`);
+      console.log(`Successfully initiated add for: ${title}`);
       return true;
       
     } catch (error) {
@@ -326,7 +325,7 @@
    */
   async function processPendingSources() {
     if (isProcessing) {
-      console.log('Already processing sources, skipping.. .');
+      console.log('Already processing, skipping.. .');
       return;
     }
     
@@ -337,75 +336,60 @@
       const pendingSources = result.pending_sources;
       
       if (! pendingSources) {
-        console.log('No pending sources found');
+        console.log('No pending sources');
         return;
       }
       
-      // Check if sources are recent (within last 60 seconds)
-      const isRecent = (Date.now() - pendingSources.timestamp) < 60000;
-      if (! isRecent) {
-        console.log('Pending sources expired, clearing...');
+      // Check if recent (within 60 seconds)
+      if (Date.now() - pendingSources.timestamp > 60000) {
+        console.log('Pending sources expired');
         await chrome.storage.local.remove('pending_sources');
         return;
       }
       
-      // Wait for page to be ready
+      // Wait for page
       await waitForPageReady();
       
       const sources = pendingSources.sources || [];
-      console.log(`Processing ${sources.length} pending sources... `);
+      console.log(`Processing ${sources.length} sources... `);
       
       let successCount = 0;
-      let failCount = 0;
       
-      // Process each source
       for (let i = 0; i < sources.length; i++) {
         const source = sources[i];
-        console.log(`Processing source ${i + 1}/${sources.length}: ${source. title}`);
+        console.log(`[${i + 1}/${sources.length}] ${source.title}`);
         
         const success = await addUrlSource(source.url, source.title);
+        if (success) successCount++;
         
-        if (success) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-        
-        // Wait between additions to avoid rate limiting
+        // Wait between additions
         if (i < sources.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          await new Promise(resolve => setTimeout(resolve, 2500));
         }
       }
       
-      // Clear pending sources
-      await chrome.storage.local.remove('pending_sources');
+      // Clear pending
+      await chrome.storage. local.remove('pending_sources');
       
-      // Notify extension of result
+      // Notify
       chrome.runtime.sendMessage({
         action: 'SOURCES_ADDED',
-        data: { 
-          success: failCount === 0,
-          successCount,
-          failCount,
-          total: sources.length
-        }
-      }). catch(() => {
-        // Background might not be listening, ignore
-      });
+        data: { successCount, total: sources.length }
+      }). catch(() => {});
       
-      console.log(`Completed: ${successCount} succeeded, ${failCount} failed out of ${sources.length}`);
+      console.log(`Done: ${successCount}/${sources.length} succeeded`);
       
     } catch (error) {
-      console.error('Error processing pending sources:', error);
+      console. error('Error processing sources:', error);
     } finally {
       isProcessing = false;
     }
   }
   
   /**
-   * Listen for messages from popup/background
+   * Message listener
    */
-  chrome. runtime.onMessage.addListener((message, sender, sendResponse) => {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const handleAsync = async () => {
       switch (message.action) {
         case 'ADD_PENDING_SOURCES':
@@ -413,11 +397,10 @@
           return { success: true };
         
         case 'GET_NOTEBOOKS':
-          const notebooks = getNotebooks();
-          return { success: true, data: notebooks };
+          return { success: true, data: getNotebooks() };
         
         case 'ADD_URL_SOURCE':
-          const success = await addUrlSource(message.data.url, message.data.title);
+          const success = await addUrlSource(message. data.url, message.data.title);
           return { success };
         
         default:
@@ -429,26 +412,23 @@
       .then(sendResponse)
       .catch(error => sendResponse({ success: false, error: error.message }));
     
-    return true; // Keep channel open for async response
+    return true;
   });
   
-  // Check for pending sources on page load
+  // Initialize
   const initBridge = async () => {
     console.log('NotebookLM Quick Add: Bridge loaded');
     
-    // Small delay to ensure page is interactive
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Check for pending sources
     await processPendingSources();
     
-    // Fetch and cache notebooks
+    // Cache notebooks
     const notebooks = getNotebooks();
     if (notebooks.length > 0) {
       chrome.runtime.sendMessage({
         action: 'SAVE_NOTEBOOKS',
         data: notebooks
-      }).catch(() => {});
+      }). catch(() => {});
     }
   };
   
@@ -458,15 +438,13 @@
     window.addEventListener('load', initBridge);
   }
   
-  // Also check when navigating within NotebookLM (SPA)
+  // SPA navigation handling
   let lastUrl = location.href;
-  const urlObserver = new MutationObserver(() => {
+  new MutationObserver(() => {
     if (location.href !== lastUrl) {
-      lastUrl = location.href;
+      lastUrl = location. href;
       setTimeout(processPendingSources, 2000);
     }
-  });
-  
-  urlObserver. observe(document.body, { childList: true, subtree: true });
+  }). observe(document.body, { childList: true, subtree: true });
   
 })();
