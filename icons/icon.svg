@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3. org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#1a73e8"/>
+  
+  <!-- Notebook icon -->
+  <rect x="35" y="28" width="58" height="72" rx="4" fill="white"/>
+  <rect x="42" y="28" width="4" height="72" fill="#1a73e8"/>
+  
+  <!-- Lines representing text -->
+  <rect x="52" y="40" width="32" height="4" rx="2" fill="#dadce0"/>
+  <rect x="52" y="52" width="28" height="4" rx="2" fill="#dadce0"/>
+  <rect x="52" y="64" width="32" height="4" rx="2" fill="#dadce0"/>
+  <rect x="52" y="76" width="24" height="4" rx="2" fill="#dadce0"/>
+  
+  <!-- Plus icon -->
+  <circle cx="95" cy="95" r="22" fill="#34a853"/>
+  <rect x="89" y="83" width="12" height="24" rx="2" fill="white"/>
+  <rect x="83" y="89" width="24" height="12" rx="2" fill="white"/>
+</svg>

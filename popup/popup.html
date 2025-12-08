@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM Quick Add</title>
+  <link rel="stylesheet" href="popup. css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <img src="../icons/icon32.png" alt="Logo">
+        <h1>NotebookLM Quick Add</h1>
+      </div>
+    </header>
+
+    <!-- Loading State -->
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>ページを検出中... </p>
+    </div>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-content hidden">
+      <!-- Page Info Section -->
+      <section id="page-info" class="section">
+        <div class="page-type-badge" id="page-type-badge">
+          <span class="badge-icon"></span>
+          <span class="badge-text"></span>
+        </div>
+        <h2 id="page-title" class="page-title"></h2>
+        <p id="page-url" class="page-url"></p>
+      </section>
+
+      <!-- YouTube Playlist Info (conditional) -->
+      <section id="playlist-section" class="section hidden">
+        <div class="playlist-info">
+          <span class="playlist-icon">📋</span>
+          <span id="playlist-count" class="playlist-count"></span>
+        </div>
+        <p class="playlist-note">※ プレイリスト内の全動画が追加されます</p>
+      </section>
+
+      <!-- Notebook Selection -->
+      <section class="section">
+        <h3>追加先ノートブック</h3>
+        <div class="notebook-select-wrapper">
+          <select id="notebook-select" class="notebook-select">
+            <option value="">新しいノートブックを作成</option>
+          </select>
+          <button id="refresh-notebooks" class="btn-icon" title="ノートブック一覧を更新">
+            ↻
+          </button>
+        </div>
+        <p id="notebook-hint" class="hint hidden">
+          💡 NotebookLMを開いてノートブック一覧を取得してください
+        </p>
+      </section>
+
+      <!-- Action Buttons -->
+      <section class="actions">
+        <button id="add-btn" class="btn btn-primary">
+          <span class="btn-icon-text">+</span>
+          NotebookLMに追加
+        </button>
+      </section>
+    </main>
+
+    <!-- Error State -->
+    <div id="error-state" class="error-state hidden">
+      <div class="error-icon">⚠️</div>
+      <p id="error-message">エラーが発生しました</p>
+      <button id="retry-btn" class="btn btn-secondary">再試行</button>
+    </div>
+
+    <!-- Success State -->
+    <div id="success-state" class="success-state hidden">
+      <div class="success-icon">✓</div>
+      <p id="success-message">NotebookLMに追加しました！</p>
+      <button id="open-notebook-btn" class="btn btn-primary">NotebookLMを開く</button>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span class="footer-tip">💡 右クリックメニューからも追加できます</span>
+    </footer>
+  </div>
+
+  <script src="popup. js" type="module"></script>
+</body>
+</html>
