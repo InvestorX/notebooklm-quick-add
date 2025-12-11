@@ -29,14 +29,24 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.youtube.com/*"],
-      "js": ["content/youtube-detector.js"],
-      "run_at": "document_idle"
+      "matches": [
+        "https://www.youtube.com/*"
+      ],
+      "js": [
+        "content/youtube-detector.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     },
     {
-      "matches": ["https://notebooklm.google.com/*"],
-      "js": ["content/notebooklm-bridge.js"],
-      "run_at": "document_idle"
+      "matches": [
+        "https://notebooklm.google.com/*"
+      ],
+      "js": [
+        "content/notebooklm-bridge.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "icons": {
